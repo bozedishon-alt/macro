@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>بوصلة الماكرو</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap bar">
+    <a class="brand" href="#" aria-label="بوصلة الماكرو">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+        <circle cx="15" cy="15" r="13" stroke="var(--fg)" stroke-width="2"/>
+        <path d="M15 5l4 10-4 10-4-10z" fill="var(--accent)"/>
+        <path d="M15 15l4 0-4 10z" fill="var(--fg)" opacity=".85"/>
+      </svg>
+      <span>بوصلة الماكرو</span>
+    </a>
+    <nav class="nav" aria-label="التنقل الرئيسي">
+      <a href="#" id="nav-home">لوحة التحكم</a>
+      <a href="#rates" id="nav-rates">أسعار الفائدة</a>
+      <a href="#calendar" id="nav-calendar">التقويم الاقتصادي</a>
+    </nav>
+    <button class="theme" id="theme" type="button" aria-label="تبديل المظهر">
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg>
+      <span>المظهر</span>
+    </button>
+  </div>
+</header>
+
+<main class="wrap" id="app"><div class="loading">جاري تحميل البيانات…</div></main>
+
+<footer class="wrap foot">
+  <h2>كيف تُحسب الدرجة</h2>
+  <p>كل عامل يُقيَّم من −2 (هبوطي قوي) إلى +2 (صعودي قوي). درجة العملة هي مجموع عواملها. درجة الزوج هي مجموع الفروق بين عوامل العملة الأساسية وعملة التسعير، أما الاتجاه والموسمية فيُحسبان من سعر الزوج نفسه. الانحياز قوي عند 10 أو أكثر، وعادي عند 4 إلى 9، ومحايد بينهما. العامل الذي لا تتوفر بياناته يظهر بشرطة ويُحسب صفرًا.</p>
+  <p style="margin-top:10px">المصادر: الأسعار من Yahoo Finance، ومراكز المتداولين من تقارير CFTC، والبيانات الاقتصادية والتقويم من Trading Economics أو FRED. هذه أداة تحليل وليست نصيحة استثمارية.</p>
+</footer>
+<script src="/app.js"></script>
+</body>
+</html>

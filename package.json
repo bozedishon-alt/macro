@@ -1,0 +1,13 @@
+{
+  "name": "macro-compass",
+  "version": "1.0.0",
+  "description": "بوصلة الماكرو: لوحة انحياز كلي بيانات حية للعملات والمؤشرات والسلع",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/run.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "private": true
+}
