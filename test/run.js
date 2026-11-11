@@ -12,12 +12,12 @@ require('./fakes').install();
 
 (async () => {
   const srv = require('../server');
-  await Promise.all(['prices', 'cot', 'macro', 'calendar'].map((k) => srv.run(k)));
+  await Promise.all(['prices', 'cot', 'macro', 'calendar', 'news'].map((k) => srv.run(k)));
   const data = srv.apiData();
 
   console.log('status:', JSON.stringify(Object.fromEntries(Object.entries(data.sources).map(([k, v]) => [k, v.ok ? 'ok' : 'FAIL ' + v.error]))));
   assert.ok(data.ready, 'model not ready');
-  assert.strictEqual(data.markets.length, 28 + 8 + 17, 'market count');
+  assert.strictEqual(data.markets.length, 29 + 8 + 17, 'market count');
   Object.values(data.sources).forEach((s) => assert.ok(s.ok, 'source failed: ' + s.error));
 
   const byId = Object.fromEntries(data.markets.map((m) => [m.id, m]));
@@ -39,6 +39,8 @@ require('./fakes').install();
   assert.ok(jpy.coverage < usd.coverage, 'coverage ordering');
 
   // non-FX market driven by USD macro
+  assert.ok(byId.XAU.gs.growth < 0 && byId.XAU.gs.jobs < 0 && byId.USD.gs.growth > 0, 'gold mirrors the dollar macro');
+  assert.ok(byId.XAG.gs.growth < 0, 'silver mirrors the dollar macro');
   const spx = byId.SPX;
   assert.ok(spx.factors.find((f) => f.k === 'cot' && !f.na), 'SPX has COT');
   assert.ok(spx.factors.find((f) => f.k === 'gdp' && !f.na), 'SPX has macro via USD');
@@ -48,14 +50,31 @@ require('./fakes').install();
   assert.ok(data.banks.USD.next, 'Fed next meeting from calendar');
   assert.strictEqual(data.banks.JPY.next, null);
 
+  // missing data on one side is left out, not counted as zero
+  const uj = byId.USDJPY;
+  assert.ok(uj.factors.find((f) => f.k === 'gdp').na, 'USDJPY gdp should be n/a (no JPY data)');
+  assert.ok(byId.USDZAR && byId.USDZAR.factors.find((f) => f.k === 'cot' && !f.na), 'USDZAR with COT');
+  assert.ok(byId.USDZAR.factors.find((f) => f.k === 'gdp').na, 'USDZAR macro n/a');
+  assert.ok(uj.max < pair.max, 'max shrinks with coverage');
+  const { biasOf } = require('../lib/scoring');
+  assert.strictEqual(biasOf(10, 34), 'vb'); assert.strictEqual(biasOf(4, 34), 'b'); assert.strictEqual(biasOf(3, 34), 'n');
+  assert.strictEqual(biasOf(3, 6), 'b'); assert.strictEqual(biasOf(6, 6), 'vb'); assert.strictEqual(biasOf(-2, 6), 'n');
+
   // HTTP layer
   await new Promise((r) => srv.server.listen(0, r));
   const port = srv.server.address().port;
   const http = require('http');
   const get = (p) => new Promise((res, rej) => http.get({ port, path: p }, (r) => { let b = ''; r.on('data', (d) => (b += d)); r.on('end', () => res({ code: r.statusCode, body: b })); }).on('error', rej));
-  const a = await get('/api/data'); assert.strictEqual(a.code, 200); assert.strictEqual(JSON.parse(a.body).markets.length, 53);
+  const a = await get('/api/data'); assert.strictEqual(a.code, 200); assert.strictEqual(JSON.parse(a.body).markets.length, 54);
   const cal = await get('/api/calendar'); assert.ok(JSON.parse(cal.body).events.length >= 2);
   const trav = await get('/..%2Fserver.js'); assert.ok(trav.code === 403 || trav.code === 404, 'path traversal blocked, got ' + trav.code);
+  const nw = JSON.parse((await get('/api/news')).body);
+  assert.ok(nw.items.length >= 9, 'news items parsed: ' + nw.items.length);
+  assert.ok(nw.items[0].title.includes('&') && !nw.items[0].title.includes('CDATA') && !nw.items[0].title.includes('&amp;'), 'news title decoded: ' + nw.items[0].title);
+  assert.ok(nw.items.every((n) => /^https?:/.test(n.link) && n.t), 'news links and dates');
+  const qq = await get('/api/quote?id=GBPUSD'); assert.strictEqual(qq.code, 200); assert.ok(JSON.parse(qq.body).price > 0, 'quote price');
+  assert.strictEqual((await get('/api/quote?id=nope')).code, 404, 'unknown quote id');
+  assert.strictEqual((await get('/api/quote?id=USD')).code, 404, 'currency has no quote');
   srv.server.close();
 
   console.log('\nTop FX by |score|:');

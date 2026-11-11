@@ -68,9 +68,14 @@ function hash(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)
       if (url.includes('query1.finance.yahoo.com')) body = fakeYahoo(decodeURIComponent(url.match(/chart\/([^?]*)/)[1]));
       else if (url.includes('publicreporting.cftc.gov')) body = fakeCot(url);
       else if (url.includes('tradingeconomics.com')) body = fakeTE(url);
+      else if (/federalreserve\.gov|bankofengland|ecb\.europa|fxstreet/.test(url)) {
+        const host = url.match(/\/\/([^/]+)/)[1];
+        const item = (n) => '<item><title><![CDATA[' + host + ' headline ' + n + ' &amp; more]]></title><link>https://example.com/' + host + '/' + n + '</link><pubDate>' + new Date(Date.now() - n * 3600e3).toUTCString() + '</pubDate></item>';
+        body = '<?xml version="1.0"?><rss><channel>' + [1, 2, 3].map(item).join('') + '</channel></rss>';
+      }
       else return { ok: false, status: 404, json: async () => ({}) };
     } catch (e) { return { ok: false, status: 500, json: async () => ({ error: e.message }) }; }
-    return { ok: true, status: 200, json: async () => body };
+    return { ok: true, status: 200, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) };
   };
   
   

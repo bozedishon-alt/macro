@@ -15,7 +15,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 (async () => {
   const srv = require('../server');
-  await Promise.all(['prices', 'cot', 'macro', 'calendar'].map((k) => srv.run(k)));
+  await Promise.all(['prices', 'cot', 'macro', 'calendar', 'news'].map((k) => srv.run(k)));
   const data = JSON.parse(JSON.stringify(srv.apiData()));
   const calendar = { source: data.sources.calendar, events: srv.raw.calendar };
 
@@ -27,7 +27,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost/', virtualConsole: vc, pretendToBeVisual: true });
   const w = dom.window;
   w.scrollTo = () => {};
-  w.fetch = (u) => Promise.resolve({ json: async () => (String(u).includes('calendar') ? calendar : data) });
+  w.fetch = (u) => Promise.resolve({ json: async () => (String(u).includes('news') ? { items: srv.raw.news, source: data.sources.news } : String(u).includes('quote') ? { price: 1.3, prev: 1.29, chg: 0.77, t: Math.floor(Date.now() / 1000) } : String(u).includes('calendar') ? calendar : data) });
   w.eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8'));
 
   const tick = () => new Promise((r) => setTimeout(r, 30));
@@ -36,8 +36,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
   await tick(); await tick();
 
   // home
-  assert.ok(app().includes('خريطة الانحياز'), 'home heading');
-  assert.strictEqual(w.document.querySelectorAll('.tile').length, 53, 'home shows 53 tiles');
+  assert.ok(app().includes('خريطة الماكرو'), 'home heading');
+  assert.strictEqual(w.document.querySelectorAll('.tile').length, 54, 'home shows 54 tiles');
   assert.strictEqual(w.document.querySelectorAll('.strength .col').length, 8, '8 currency bars');
 
   // filters
@@ -58,6 +58,10 @@ const { JSDOM, VirtualConsole } = require('jsdom');
     assert.ok(w.document.querySelectorAll('#factor-cards .rw').length === 17, id + ' has 17 factor rows');
     if (id === 'GBPUSD') {
       assert.ok(h.includes('class="pchart"'), 'price chart');
+      assert.strictEqual(w.document.querySelectorAll('.mtabs button').length, 6, 'six section tabs');
+      assert.ok(h.includes('id="sec-cal"') && h.includes('id="mnews"'), 'calendar and news section');
+      assert.ok(h.includes('ما الذي يقود الانحياز'), 'driving banner');
+      assert.ok(h.includes('id="sec-diff"') && h.includes('قوة العملة'), 'rate differential and currency strength');
       assert.ok(h.includes('البنوك المركزية') && w.document.querySelectorAll('.cb').length === 2, 'two bank cards');
     }
   }
@@ -73,6 +77,8 @@ const { JSDOM, VirtualConsole } = require('jsdom');
   w.document.querySelector('[data-ci="3"]').click();
   assert.ok(w.document.querySelectorAll('tbody tr').length >= 1, 'high importance events remain');
 
+  await go('news'); await tick();
+  assert.ok(w.document.querySelectorAll('.news li').length >= 3, 'news page items');
   assert.deepStrictEqual(errors, [], 'no page errors: ' + errors.join(' | '));
   console.log('UI SMOKE TEST PASSED');
   process.exit(0);
