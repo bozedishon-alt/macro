@@ -258,3 +258,4 @@ table.compact th,table.compact td{white-space:normal;padding:10px 8px}
 .strrow .sl{display:flex;align-items:center;gap:8px;flex:1;min-width:0;font-weight:600}
 .strrow .sl small{font-weight:400;color:var(--muted);font-size:var(--fs-xs);overflow-wrap:anywhere}
 .strrow .sl .fl+*{margin-inline-start:0}
+.xv{color:var(--muted);font-family:var(--font-mono);font-size:var(--fs-xs);margin-inline-start:6px}

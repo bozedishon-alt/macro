@@ -138,7 +138,8 @@
   }
   function factorRow(f) {
     if (f.na) return '<div class="rw na"><div class="l"><span>' + FACTOR_AR[f.k] + '</span><b>—</b></div><div class="dbar"></div></div>';
-    return '<div class="rw"><div class="l"><span>' + FACTOR_AR[f.k] + '</span><b class="' + toneOf(f.v) + '" dir="ltr">' + fmt(f.v) + '</b></div>' + dbar(f.v, 2) + '</div>';
+    var xv = f.x != null ? ' <small class="xv" dir="ltr">' + f.x + '</small>' : '';
+    return '<div class="rw"><div class="l"><span>' + FACTOR_AR[f.k] + xv + '</span><b class="' + toneOf(f.v) + '" dir="ltr">' + fmt(f.v) + '</b></div>' + dbar(f.v, 2) + '</div>';
   }
   function groupAvail(m, g) { return m.factors.filter(function (f) { return f.g === g && !f.na; }).length; }
 
