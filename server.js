@@ -24,15 +24,17 @@ const EVERY = {
   cot: (Number(process.env.COT_REFRESH_MIN) || 720) * 60e3,
   macro: (Number(process.env.MACRO_REFRESH_MIN) || 360) * 60e3,
   calendar: (Number(process.env.CAL_REFRESH_MIN) || 60) * 60e3,
+  news: (Number(process.env.NEWS_REFRESH_MIN) || 15) * 60e3,
 };
 const CACHE_FILE = process.env.CACHE_FILE || path.join(__dirname, 'data', 'cache.json');
 
-const raw = { prices: {}, cot: {}, macro: {}, calendar: [] };
+const raw = { prices: {}, cot: {}, macro: {}, calendar: [], news: [] };
 const status = {
   prices: { ok: false, at: null, error: null, note: null },
   cot: { ok: false, at: null, error: null, note: null },
   macro: { ok: false, at: null, error: null, note: TE_KEY ? 'Trading Economics' : FRED_KEY ? 'FRED (أمريكا فقط)' : 'غير مفعّل: أضف TE_API_KEY أو FRED_API_KEY' },
   calendar: { ok: false, at: null, error: null, note: TE_KEY ? 'Trading Economics' : 'Forex Factory (هذا الأسبوع)' },
+  news: { ok: false, at: null, error: null, note: 'Fed / BoE / ECB / FXStreet' },
 };
 let model = { markets: [], banks: {}, updatedAt: null };
 
@@ -102,6 +104,12 @@ const refreshers = {
     try { raw.calendar = TE_KEY ? await S.fetchCalendarTE(TE_KEY) : await S.fetchCalendarFF(); status.calendar.ok = true; status.calendar.error = null; }
     catch (e) { status.calendar.ok = false; status.calendar.error = e.message; }
   },
+  async news() {
+    const { data, errors } = await S.fetchNews();
+    if (data.length) raw.news = data;
+    status.news.ok = data.length > 0;
+    status.news.error = errors.length ? errors.slice(0, 3).join(' | ') : null;
+  },
 };
 
 const running = {};
@@ -115,12 +123,24 @@ async function run(name) {
 
 function startScheduler() {
   // stagger the first runs; macro and calendar are small, prices take about 30 seconds
-  run('calendar'); run('macro'); run('cot'); run('prices');
+  run('calendar'); run('news'); run('macro'); run('cot'); run('prices');
   Object.keys(EVERY).forEach((k) => setInterval(() => run(k), EVERY[k]).unref());
 }
 
 /* ---------------- http ---------------- */
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
+
+const quoteCache = new Map();
+function symbolsFor(id) {
+  if (C.FX_PAIRS.includes(id)) return [id + '=X'];
+  const o = C.OTHERS.find((x) => x.id === id);
+  return o ? [o.yahoo].concat(o.alt ? [o.alt] : []) : null;
+}
+async function quoteFor(syms) {
+  let err;
+  for (const s of syms) { try { return await S.yahooQuote(s); } catch (e) { err = e; } }
+  throw err;
+}
 
 function sendJson(res, obj, code = 200) {
   const body = JSON.stringify(obj);
@@ -141,10 +161,24 @@ function apiData() {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/data') return sendJson(res, apiData());
-  if (url.pathname === '/api/status') return sendJson(res, { sources: status, updatedAt: model.updatedAt, counts: { prices: Object.keys(raw.prices).length, cot: Object.keys(raw.cot).length, calendar: (raw.calendar || []).length } });
+  if (url.pathname === '/api/status') return sendJson(res, { sources: status, updatedAt: model.updatedAt, counts: { prices: Object.keys(raw.prices).length, cot: Object.keys(raw.cot).length, calendar: (raw.calendar || []).length, news: (raw.news || []).length } });
   if (url.pathname === '/api/calendar') {
     const now = Date.now() - 12 * 3600e3;
     return sendJson(res, { source: status.calendar, events: (raw.calendar || []).filter((e) => new Date(e.t).getTime() >= now).sort((a, b) => new Date(a.t) - new Date(b.t)) });
+  }
+  if (url.pathname === '/api/news') return sendJson(res, { source: status.news, items: raw.news || [] });
+  if (url.pathname === '/api/quote') {
+    const id = url.searchParams.get('id') || '';
+    const sym = symbolsFor(id);
+    if (!sym) return sendJson(res, { error: 'unknown market' }, 404);
+    const hit = quoteCache.get(id);
+    if (hit && Date.now() - hit.at < 10000) return sendJson(res, hit.q);
+    quoteFor(sym).then((q) => {
+      const out = { id, price: q.price, prev: q.prev, chg: q.prev ? (q.price / q.prev - 1) * 100 : null, t: q.t || Math.floor(Date.now() / 1000) };
+      quoteCache.set(id, { at: Date.now(), q: out });
+      sendJson(res, out);
+    }).catch((e) => sendJson(res, { error: e.message }, 502));
+    return;
   }
   if (url.pathname === '/api/refresh' && req.method === 'POST') { Object.keys(refreshers).forEach((k) => run(k)); return sendJson(res, { started: true }); }
   if (url.pathname.startsWith('/api/')) return sendJson(res, { error: 'not found' }, 404);
