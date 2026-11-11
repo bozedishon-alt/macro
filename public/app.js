@@ -10,9 +10,9 @@
   var FACTOR_AR = {
     trend: 'الاتجاه', seas: 'الموسمية', cot: 'مراكز COT', crowd: 'معنويات المتداولين',
     gdp: 'الناتج المحلي', mfg: 'PMI التصنيع', svc: 'PMI الخدمات', retail: 'مبيعات التجزئة', conf: 'ثقة المستهلك',
-    cpi: 'التضخم CPI', core: 'التضخم الأساسي', ppi: 'أسعار المنتجين',
-    nfp: 'نمو الوظائف', unemp: 'معدل البطالة', claims: 'طلبات إعانة البطالة',
-    rate: 'سعر الفائدة', exp: 'اتجاه الفائدة'
+    cpi: 'التضخم CPI', ppi: 'أسعار المنتجين', pce: 'التضخم PCE',
+    nfp: 'نمو الوظائف', unemp: 'معدل البطالة', claims: 'طلبات إعانة البطالة', adp: 'توظيف ADP', jolts: 'فرص العمل JOLTS',
+    rate: 'سعر الفائدة'
   };
   var GROUPS = [
     { k: 'tech', ar: 'الاتجاه الفني', short: 'الفني' },
@@ -260,13 +260,14 @@
   }
   function priceCard(m) {
     if (!m.series) return '';
-    return '<article class="card" id="sec-details" style="margin-top:16px"><header><h2>السعر</h2><p>' + esc(m.label) + '</p></header><div class="body">' +
+    return '<article class="card" id="sec-details" style="margin-top:16px"><header><h2>السعر</h2><p>' + esc(m.cat === 'cur' ? 'مؤشر الدولار الأمريكي (DXY)' : m.label) + '</p></header><div class="body">' +
       '<div class="px"><span class="p" id="px-p">' + fmtPrice(m.price) + '</span><span class="c ' + toneOf(m.chg) + '" id="px-c">' + fmtPct(m.chg) + '</span><span class="livechip" id="px-live">آخر إغلاق</span></div>' +
-      priceChart(m) + '<p class="muted note">الرسم: إغلاق يومي لآخر 120 يوم تداول. الرقم أعلاه يتحدث كل 15 ثانية عندما يكون السوق مفتوحاً.</p></div></article>';
+      '<div id="pwrap">' + priceChart(m) + '</div><p class="muted note" id="pnote">الرسم: إغلاق يومي لآخر 120 يوم تداول. الرقم أعلاه يتحدث كل 15 ثانية عندما يكون السوق مفتوحاً.</p></div></article>';
   }
   function bankCard(cur) {
     var b = (DATA.banks || {})[cur]; if (!b) return '';
-    var rateTxt = b.rate != null ? b.rate.toFixed(2) + '%' : '—';
+    var rateTxt = b.rate != null ? (b.lo != null ? b.lo.toFixed(2) + '–' : '') + b.rate.toFixed(2) + '%' : '—';
+    if (b.approx && b.rate != null) rateTxt += ' ≈';
     var last = 'غير متاح';
     if (b.rate != null && b.prev != null) {
       if (b.rate !== b.prev) { var d = Math.round((b.rate - b.prev) * 100); last = (d > 0 ? '+' : MINUS) + Math.abs(d) + ' نقطة أساس' + (b.lastDate ? ' · ' + dateAr(b.lastDate) : ''); }
@@ -296,7 +297,7 @@
   function calNewsSection(m) {
     var cs = calCurrencies(m);
     return '<section id="sec-cal"><div class="duo"><div><h2 class="sect-title">التقويم الاقتصادي</h2><p class="sect-sub">أهم الإصدارات القادمة' + (cs.length ? ': <bdi class="ltr">' + cs.join(' · ') + '</bdi>' : '') + '</p><div id="mcal" class="card tw" style="margin-top:12px"><div class="empty">جاري تحميل التقويم…</div></div></div>' +
-      '<div><h2 class="sect-title">آخر الأخبار</h2><p class="sect-sub">عناوين البنوك المركزية والأسواق.</p><div id="mnews" class="card" style="margin-top:12px"><div class="empty">جاري تحميل الأخبار…</div></div></div></div></section>';
+      '<div><h2 class="sect-title">آخر الأخبار</h2><p class="sect-sub">أخبار هذا السوق، وبدائلها عناوين البنوك المركزية.</p><div id="mnews" class="card" style="margin-top:12px"><div class="empty">جاري تحميل الأخبار…</div></div></div></div></section>';
   }
   function newsList(items) {
     return '<ul class="news">' + items.map(function (n) {
@@ -305,7 +306,15 @@
     }).join('') + '</ul>';
   }
   function renderMarketNews(m) {
-    var el = document.getElementById('mnews'); if (!el || !NEWS) return;
+    var el = document.getElementById('mnews'); if (!el) return;
+    fetch('/api/news?id=' + encodeURIComponent(m.id), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (currentId !== m.id) return;
+      var items = (j && j.items) || [];
+      if (items.length) el.innerHTML = newsList(items.slice(0, 8)); else fallbackNews(m, el);
+    }).catch(function () { fallbackNews(m, el); });
+  }
+  function fallbackNews(m, el) {
+    if (!NEWS) return;
     var cs = calCurrencies(m);
     var all = NEWS.items || [];
     var rel = all.filter(function (n) { return !n.cur || cs.indexOf(n.cur) > -1; });
@@ -424,6 +433,16 @@
     };
     pull();
     quoteTimer = setInterval(pull, 15000);
+    loadIntraday(m);
+  }
+  function loadIntraday(m) {
+    fetch('/api/intraday?id=' + encodeURIComponent(m.id), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      var w = document.getElementById('pwrap');
+      if (!w || currentId !== m.id || !j || !j.points || j.points.length < 20) return;
+      w.innerHTML = priceChart({ series: j.points });
+      var n = document.getElementById('pnote');
+      if (n) n.textContent = 'الرسم: حركة آخر 5 أيام تداول كل 15 دقيقة. الرقم أعلاه يتحدث كل 15 ثانية عندما يكون السوق مفتوحاً.';
+    }).catch(function () { /* keep the daily chart */ });
   }
   function ensureCal(cb) {
     if (CAL) return cb();
@@ -452,7 +471,7 @@
       if (b.rate != null && b.prev != null) chg = b.rate === b.prev ? 'بدون تغيير' : (b.rate > b.prev ? '+' : MINUS) + Math.abs(Math.round((b.rate - b.prev) * 100)) + ' نقطة أساس';
       return '<tr><td><b>' + b.name + '</b> <bdi class="ltr muted">' + b.short + '</bdi></td><td><bdi class="ltr">' + c + '</bdi></td><td class="num" dir="ltr">' + (b.rate != null ? b.rate.toFixed(2) + '%' : '—') + '</td><td class="num" dir="ltr">' + (b.prev != null ? b.prev.toFixed(2) + '%' : '—') + '</td><td>' + chg + '</td><td>' + (b.lastDate ? dateAr(b.lastDate) : '—') + '</td><td>' + (b.next ? dateAr(b.next) + ' · بعد ' + Math.max(daysTo(b.next), 0) + ' يوماً' : '—') + '</td></tr>';
     }).join('');
-    return '<section style="padding-block:28px 8px"><div class="kicker">أسعار الفائدة</div><h1 style="font-size:var(--fs-2xl);margin:0 0 8px;line-height:1.2">البنوك المركزية الثمانية</h1><p style="color:var(--muted);margin:0 0 4px;max-width:60ch">سعر الفائدة الحالي والسابق وآخر تغيير وموعد الاجتماع القادم.</p>' + metaBar() + '</section>' +
+    return '<section style="padding-block:28px 8px"><div class="kicker">أسعار الفائدة</div><h1 style="font-size:var(--fs-2xl);margin:0 0 8px;line-height:1.2">البنوك المركزية الثمانية</h1><p style="color:var(--muted);margin:0 0 4px;max-width:60ch">سعر الفائدة الحالي والسابق وآخر تغيير وموعد الاجتماع القادم. علامة ≈ تعني قيمة تقريبية من مصدر مجاني.</p>' + metaBar() + '</section>' +
       '<div class="card tw" style="margin-top:16px"><table><thead><tr><th>البنك</th><th>العملة</th><th>السعر الحالي</th><th>السابق</th><th>آخر تغيير</th><th>تاريخ القرار</th><th>الاجتماع القادم</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 

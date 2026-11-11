@@ -55,13 +55,19 @@ function buildBanks() {
   const banks = {};
   C.CURRENCIES.forEach((cur) => {
     const r = raw.macro[cur] && raw.macro[cur].rate;
-    const b = { cur, short: C.BANKS[cur].short, name: C.BANKS[cur].name, rate: null, prev: null, lastDate: null, next: null };
-    if (r && r.v != null) { b.rate = r.v; b.prev = r.p; b.lastDate = r.d; }
+    const b = { cur, short: C.BANKS[cur].short, name: C.BANKS[cur].name, rate: null, prev: null, lastDate: null, next: null, lo: null, approx: false };
+    if (r && r.v != null) { b.rate = r.v; b.prev = r.p; b.lastDate = r.d; b.approx = !!r.approx; }
+    const lo = cur === 'USD' && raw.macro.USD && raw.macro.USD.rate_lo;
+    if (lo && lo.v != null && r && lo.v < r.v) b.lo = lo.v;
     const now = Date.now();
     const next = (raw.calendar || [])
       .filter((e) => e.cur === cur && /interest rate decision|rate statement|monetary policy (meeting|decision)/i.test(e.event) && new Date(e.t).getTime() > now)
       .sort((a, z) => new Date(a.t) - new Date(z.t))[0];
     if (next) b.next = next.t;
+    else if (C.MEETINGS[cur]) {
+      const d = C.MEETINGS[cur].find((x) => new Date(x + 'T19:00:00Z').getTime() > now);
+      if (d) b.next = d + 'T19:00:00Z';
+    }
     banks[cur] = b;
   });
   return banks;
@@ -84,7 +90,7 @@ const refreshers = {
     const { data, errors } = await S.fetchPrices();
     if (Object.keys(data).length) Object.assign(raw.prices, data);
     status.prices.ok = Object.keys(data).length > 0;
-    status.prices.error = summarize(errors, C.FX_PAIRS.length + C.OTHERS.length);
+    status.prices.error = summarize(errors, C.FX_PAIRS.length + C.OTHERS.length + Object.keys(C.CUR_PRICE).length);
   },
   async cot() {
     const { data, errors } = await S.fetchCot();
@@ -131,8 +137,11 @@ function startScheduler() {
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.ico': 'image/x-icon' };
 
 const quoteCache = new Map();
+const newsCache = new Map();
+const intraCache = new Map();
 function symbolsFor(id) {
   if (C.FX_PAIRS.includes(id)) return [id + '=X'];
+  if (C.CUR_PRICE[id]) return [C.CUR_PRICE[id]];
   const o = C.OTHERS.find((x) => x.id === id);
   return o ? [o.yahoo].concat(o.alt ? [o.alt] : []) : null;
 }
@@ -166,7 +175,36 @@ const server = http.createServer((req, res) => {
     const now = Date.now() - 12 * 3600e3;
     return sendJson(res, { source: status.calendar, events: (raw.calendar || []).filter((e) => new Date(e.t).getTime() >= now).sort((a, b) => new Date(a.t) - new Date(b.t)) });
   }
-  if (url.pathname === '/api/news') return sendJson(res, { source: status.news, items: raw.news || [] });
+  if (url.pathname === '/api/news') {
+    const nid = url.searchParams.get('id');
+    if (!nid) return sendJson(res, { source: status.news, items: raw.news || [] });
+    const q = C.newsQuery(nid);
+    if (!q) return sendJson(res, { error: 'unknown market' }, 404);
+    const hit = newsCache.get(nid);
+    if (hit && Date.now() - hit.at < 15 * 60e3) return sendJson(res, hit.out);
+    S.fetchMarketNews(q).then((items) => {
+      const out = { id: nid, items };
+      newsCache.set(nid, { at: Date.now(), out });
+      sendJson(res, out);
+    }).catch((e) => sendJson(res, { id: nid, items: [], error: e.message }));
+    return;
+  }
+  if (url.pathname === '/api/intraday') {
+    const iid = url.searchParams.get('id') || '';
+    const isyms = symbolsFor(iid);
+    if (!isyms) return sendJson(res, { error: 'unknown market' }, 404);
+    const ihit = intraCache.get(iid);
+    if (ihit && Date.now() - ihit.at < 60e3) return sendJson(res, ihit.out);
+    (async () => {
+      let err;
+      for (const s of isyms) {
+        try { const out = { id: iid, points: await S.yahooIntraday(s) }; intraCache.set(iid, { at: Date.now(), out }); return sendJson(res, out); }
+        catch (e) { err = e; }
+      }
+      sendJson(res, { id: iid, points: [], error: err && err.message }, 502);
+    })();
+    return;
+  }
   if (url.pathname === '/api/quote') {
     const id = url.searchParams.get('id') || '';
     const sym = symbolsFor(id);

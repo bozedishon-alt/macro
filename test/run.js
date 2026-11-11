@@ -57,7 +57,7 @@ require('./fakes').install();
   assert.ok(byId.USDZAR.factors.find((f) => f.k === 'gdp').na, 'USDZAR macro n/a');
   assert.ok(uj.max < pair.max, 'max shrinks with coverage');
   const { biasOf } = require('../lib/scoring');
-  assert.strictEqual(biasOf(10, 34), 'vb'); assert.strictEqual(biasOf(4, 34), 'b'); assert.strictEqual(biasOf(3, 34), 'n');
+  assert.strictEqual(biasOf(11, 36), 'vb'); assert.strictEqual(biasOf(5, 36), 'b'); assert.strictEqual(biasOf(3, 36), 'n');
   assert.strictEqual(biasOf(3, 6), 'b'); assert.strictEqual(biasOf(6, 6), 'vb'); assert.strictEqual(biasOf(-2, 6), 'n');
 
   // HTTP layer
@@ -74,8 +74,22 @@ require('./fakes').install();
   assert.ok(nw.items.every((n) => /^https?:/.test(n.link) && n.t), 'news links and dates');
   const qq = await get('/api/quote?id=GBPUSD'); assert.strictEqual(qq.code, 200); assert.ok(JSON.parse(qq.body).price > 0, 'quote price');
   assert.strictEqual((await get('/api/quote?id=nope')).code, 404, 'unknown quote id');
-  assert.strictEqual((await get('/api/quote?id=USD')).code, 404, 'currency has no quote');
+  assert.strictEqual((await get('/api/quote?id=USD')).code, 200, 'USD quotes the dollar index');
+  assert.strictEqual((await get('/api/quote?id=EUR')).code, 404, 'EUR has no quote');
+  const intra = JSON.parse((await get('/api/intraday?id=GBPUSD')).body); assert.ok(intra.points.length >= 20, 'intraday points');
+  assert.strictEqual((await get('/api/intraday?id=nope')).code, 404, 'unknown intraday id');
+  const mn = JSON.parse((await get('/api/news?id=XAU')).body); assert.ok(mn.items.length >= 1 && mn.items[0].src, 'market news');
+  assert.strictEqual((await get('/api/news?id=nope')).code, 404, 'unknown news id');
+  assert.ok(byId.USD.price > 0 && byId.USD.series.length > 10, 'USD has a dollar-index price');
   srv.server.close();
+
+  // FRED path: policy-rate history, free rates for other currencies, Fed range
+  const S = require('../lib/sources');
+  const fr = await S.fetchMacroFRED('k');
+  assert.strictEqual(fr.data.USD.rate.v, 4); assert.strictEqual(fr.data.USD.rate.p, 3.75); assert.ok(fr.data.USD.rate.d, 'last change date');
+  assert.strictEqual(fr.data.USD.rate_lo.v, 3.75);
+  assert.ok(fr.data.EUR.rate && fr.data.GBP.rate && fr.data.GBP.rate.approx === true, 'free rates for other currencies');
+  assert.ok(data.banks.USD.next, 'next meeting');
 
   console.log('\nTop FX by |score|:');
   data.markets.filter((m) => m.cat === 'fx').sort((a, b) => Math.abs(b.score) - Math.abs(a.score)).slice(0, 5)

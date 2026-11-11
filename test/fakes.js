@@ -61,6 +61,19 @@ function hash(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)
     throw new Error('unexpected TE url ' + url);
   }
   
+  function fakeFred(url) {
+    const id = url.match(/series_id=(\w+)/)[1];
+    const n = Number((url.match(/limit=(\d+)/) || [])[1]) || 6;
+    const rate = /^(DFEDTAR|ECBMRR|IRSTCI)/.test(id);
+    const base = id === 'DFEDTARL' ? 3.75 : id === 'DFEDTARU' ? 4 : id === 'ECBMRRFR' ? 2.15 : 3 + (id.charCodeAt(9) % 5) / 4;
+    const obs = [];
+    for (let i = 0; i < n; i++) {
+      const d = new Date(Date.now() - i * (rate && id !== 'IRSTCI' && !id.startsWith('IRSTCI') ? 864e5 : 30 * 864e5)).toISOString().slice(0, 10);
+      obs.push({ date: d, value: String(rate ? (i < 40 ? base : base - 0.25) : 100 + i) });
+    }
+    return { observations: obs };
+  }
+
   global.fetch = async (url) => {
     url = String(url);
     let body;
@@ -68,7 +81,8 @@ function hash(s) { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)
       if (url.includes('query1.finance.yahoo.com')) body = fakeYahoo(decodeURIComponent(url.match(/chart\/([^?]*)/)[1]));
       else if (url.includes('publicreporting.cftc.gov')) body = fakeCot(url);
       else if (url.includes('tradingeconomics.com')) body = fakeTE(url);
-      else if (/federalreserve\.gov|bankofengland|ecb\.europa|fxstreet/.test(url)) {
+      else if (url.includes('api.stlouisfed.org')) body = fakeFred(url);
+      else if (/federalreserve\.gov|bankofengland|ecb\.europa|fxstreet|news\.google\.com/.test(url)) {
         const host = url.match(/\/\/([^/]+)/)[1];
         const item = (n) => '<item><title><![CDATA[' + host + ' headline ' + n + ' &amp; more]]></title><link>https://example.com/' + host + '/' + n + '</link><pubDate>' + new Date(Date.now() - n * 3600e3).toUTCString() + '</pubDate></item>';
         body = '<?xml version="1.0"?><rss><channel>' + [1, 2, 3].map(item).join('') + '</channel></rss>';

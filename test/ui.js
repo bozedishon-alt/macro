@@ -27,7 +27,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: 'http://localhost/', virtualConsole: vc, pretendToBeVisual: true });
   const w = dom.window;
   w.scrollTo = () => {};
-  w.fetch = (u) => Promise.resolve({ json: async () => (String(u).includes('news') ? { items: srv.raw.news, source: data.sources.news } : String(u).includes('quote') ? { price: 1.3, prev: 1.29, chg: 0.77, t: Math.floor(Date.now() / 1000) } : String(u).includes('calendar') ? calendar : data) });
+  w.fetch = (u) => Promise.resolve({ json: async () => (String(u).includes('intraday') ? { points: Array.from({ length: 60 }, (_, i) => [1700000000 + i * 900, 1.3 + Math.sin(i / 5) / 100]) } : String(u).includes('news') ? { items: srv.raw.news, source: data.sources.news } : String(u).includes('quote') ? { price: 1.3, prev: 1.29, chg: 0.77, t: Math.floor(Date.now() / 1000) } : String(u).includes('calendar') ? calendar : data) });
   w.eval(fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8'));
 
   const tick = () => new Promise((r) => setTimeout(r, 30));
@@ -55,9 +55,9 @@ const { JSDOM, VirtualConsole } = require('jsdom');
     const h = app();
     assert.ok(h.includes('تفصيل العوامل'), id + ' factor section');
     assert.ok(h.includes('المحركات الرئيسية'), id + ' drivers');
-    assert.ok(w.document.querySelectorAll('#factor-cards .rw').length === 17, id + ' has 17 factor rows');
+    assert.ok(w.document.querySelectorAll('#factor-cards .rw').length === 18, id + ' has 18 factor rows');
     if (id === 'GBPUSD') {
-      assert.ok(h.includes('class="pchart"'), 'price chart');
+      assert.ok(h.includes('class="pchart"') && h.includes('id="pwrap"'), 'price chart');
       assert.strictEqual(w.document.querySelectorAll('.mtabs button').length, 6, 'six section tabs');
       assert.ok(h.includes('id="sec-cal"') && h.includes('id="mnews"'), 'calendar and news section');
       assert.ok(h.includes('ما الذي يقود الانحياز'), 'driving banner');
