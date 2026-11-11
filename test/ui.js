@@ -60,11 +60,13 @@ const { JSDOM, VirtualConsole } = require('jsdom');
       assert.ok(h.includes('class="pchart"') && h.includes('id="pwrap"'), 'price chart');
       assert.strictEqual(w.document.querySelectorAll('.mtabs button').length, 6, 'six section tabs');
       assert.ok(h.includes('id="sec-cal"') && h.includes('id="mnews"'), 'calendar and news section');
-      assert.ok(h.includes('ما الذي يقود الانحياز'), 'driving banner');
+      assert.ok(h.includes('class="head"'), 'market header');
       assert.ok(h.includes('id="sec-diff"') && h.includes('قوة العملة'), 'rate differential and currency strength');
       assert.ok(h.includes('البنوك المركزية') && w.document.querySelectorAll('.cb').length === 2, 'two bank cards');
     }
   }
+  await go('m-EURUSD');
+  assert.ok(app().includes('ما الذي يقود الانحياز'), 'driving banner');
   w.document.querySelector('[data-fg="mon"]').click();
   assert.strictEqual(w.document.querySelectorAll('#factor-cards .card').length, 1, 'factor group filter');
 

@@ -119,12 +119,19 @@ const refreshers = {
 };
 
 const running = {};
+const retries = {};
 async function run(name) {
   if (running[name]) return;
   running[name] = true;
   try { await refreshers[name](); status[name].at = new Date().toISOString(); if (!status[name].ok && !status[name].error) status[name].error = null; }
   catch (e) { status[name].ok = false; status[name].error = e.message; console.error('[' + name + ']', e.message); }
-  finally { running[name] = false; recompute(); persist(); console.log('[' + name + '] ' + (status[name].ok ? 'ok' : 'failed') + (status[name].error ? ' - ' + status[name].error : '')); }
+  finally {
+    running[name] = false; recompute(); persist();
+    // a failed or partial pull is retried a few times instead of waiting for the next scheduled run
+    if ((name === 'cot' || name === 'calendar') && (!status[name].ok || status[name].error)) {
+      retries[name] = (retries[name] || 0) + 1;
+      if (retries[name] <= 4) setTimeout(() => run(name), 3 * 60e3).unref();
+    } else retries[name] = 0; console.log('[' + name + '] ' + (status[name].ok ? 'ok' : 'failed') + (status[name].error ? ' - ' + status[name].error : '')); }
 }
 
 function startScheduler() {
